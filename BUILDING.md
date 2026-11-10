@@ -27,6 +27,32 @@ Follow these steps:
 **Under the hood**: If an Anaconda or Miniconda environment doesn't already exist or is not up-to-date, the `build.sh` script automatically runs the [`env_create.sh`](scripts/env_create.sh) script to create the environment. It then uses [`env_activate.sh`](scripts/env_activate.sh) to activate the environment and set up the appropriate version of Python. The new environment is located at `<repo root>/coremltools/envs` and is named after the `py` parameter. For example, a development environment with py 3.7 is named `coremltools-dev-py37`.
 
 
+## Building on Linux
+
+On Linux, also install the libuuid headers (`uuid-dev` on Debian/Ubuntu, `libuuid-devel` on Fedora/RHEL) and the
+Python development headers for your Python version (for example `python3.12-dev`).
+
+Linux x86_64 and Linux aarch64 (arm64) hosts, such as NVIDIA Jetson, AWS Graviton or Ampere machines, are both
+supported. PyPI has no prebuilt coremltools wheel for Linux aarch64, so `pip install coremltools` there builds the
+source distribution into a pure-Python wheel without the native libraries, and conversion fails with
+`BlobWriter not loaded`. Build a native wheel from source instead:
+
+```sh
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release -DOVERWRITE_PB_SOURCE=0 \
+  -DPYTHON_EXECUTABLE:FILEPATH="$(which python)" \
+  -DPYTHON_INCLUDE_DIR=/usr/include/python3.12 \
+  -DPYTHON_LIBRARY=/usr/lib/aarch64-linux-gnu/libpython3.12.so ..
+make -j"$(nproc)" modelpackage milstoragepython
+make dist        # writes build/dist/coremltools-<version>-cp312-none-linux_aarch64.whl
+pip install --force-reinstall --no-deps dist/coremltools-*.whl
+python -c "from coremltools.libmilstoragepython import _BlobStorageWriter; import coremltools.libmodelpackage"
+```
+
+Building only the `modelpackage` and `milstoragepython` targets skips the C++ test suite. `libcoremlpython`, which
+binds Apple's Core ML framework for predictions, is built only on macOS, so the message
+`Failed to load _MLModelProxy` on Linux is expected; conversion doesn't use it.
+
 ## Build targets
 
 The following build targets help you configure the development environment. If you need to add packages, edit the `reqs/pip` files, and the auto-environment script installs them automatically.

@@ -31,6 +31,12 @@ if(HAS_CCACHE)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
 endif()
 
+# CMake 4 rejects projects that declare compatibility with CMake < 3.5, which some vendored
+# dependencies do. Let them configure unless the caller already chose a minimum.
+if(NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+endif()
+
 add_subdirectory(deps)
 add_subdirectory(mlmodel)
 
@@ -118,6 +124,12 @@ add_custom_command(
   ${_additional_modelpackage_command}
 )
 if (NOT APPLE)
+  include(CheckIncludeFileCXX)
+  check_include_file_cxx("uuid/uuid.h" HAVE_UUID_UUID_H)
+  if(NOT HAVE_UUID_UUID_H)
+    message(FATAL_ERROR "uuid/uuid.h not found. Install the libuuid development package "
+                        "(for example 'apt-get install uuid-dev' or 'dnf install libuuid-devel').")
+  endif()
   target_link_libraries(modelpackage uuid)
 endif()
 
@@ -233,7 +245,15 @@ if(APPLE)
   endif()
   set(PLAT_NAME "macosx_${MIN_MAC_OS}_${HARDWARE_NAME}")
 elseif("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-  set(PLAT_NAME "manylinux1_x86_64")
+  string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" LINUX_PROCESSOR)
+  if(LINUX_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    set(PLAT_NAME "manylinux1_x86_64")
+  elseif(LINUX_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    # No manylinux audit is done for arm64 builds, so use the plain Linux tag.
+    set(PLAT_NAME "linux_aarch64")
+  else()
+    message(FATAL_ERROR "Unsupported hardware type '${CMAKE_SYSTEM_PROCESSOR}'. On Linux, x86_64 and aarch64 are supported.")
+  endif()
 else()
   message(FATAL_ERROR "Unsupported build platform. Supported platforms are Linux and macOS.")
 endif()
